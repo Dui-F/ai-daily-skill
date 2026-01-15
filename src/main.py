@@ -67,8 +67,8 @@ def main():
     total_steps = 5 if email_enabled else 4
 
     try:
-        # 1. 计算目标日期 (今天 - 2天)
-        target_date = get_target_date(days_offset=2)
+        # 1. 计算目标日期 (今天)
+        target_date = get_target_date(days_offset=0)
         print(f"[目标日期] {target_date}")
         print(f"   (北京时间: {datetime.now(timezone.utc) + timedelta(hours=8)} + 8h)")
         print()
