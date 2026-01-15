@@ -99,6 +99,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
           keep_files: true
+          destination_dir: ./
           commit_message: '🤖 Auto update AI Daily - {{ date }}'
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
