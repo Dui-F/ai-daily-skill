@@ -51,6 +51,40 @@ def get_target_date(days_offset: int = 2) -> str:
     return target_date.strftime("%Y-%m-%d")
 
 
+def merge_contents(contents: list) -> dict:
+    """
+    合并多个日期的内容
+
+    Args:
+        contents: 内容列表
+
+    Returns:
+        合并后的内容字典
+    """
+    if not contents:
+        return None
+
+    # 使用第一个内容作为基础
+    merged = contents[0].copy()
+
+    # 合并标题
+    titles = [c.get('title', '') for c in contents if c.get('title')]
+    if len(titles) > 1:
+        merged['title'] = f"AI资讯汇总 ({len(titles)}天)"
+
+    # 合并内容
+    all_content = []
+    for i, content in enumerate(contents):
+        date_str = get_target_date(days_offset=i)
+        all_content.append(f"\n\n## {date_str} 资讯\n")
+        all_content.append(content.get('content', ''))
+
+    merged['content'] = '\n'.join(all_content)
+    merged['description'] = f"汇总了 {len(titles)} 天的 AI 前沿资讯"
+
+    return merged
+
+
 def main():
     """主函数"""
     print_banner()
@@ -67,9 +101,10 @@ def main():
     total_steps = 5 if email_enabled else 4
 
     try:
-        # 1. 计算目标日期 (今天)
-        target_date = get_target_date(days_offset=0)
-        print(f"[目标日期] {target_date}")
+        # 1. 计算目标日期范围 (获取最近3天的资讯)
+        end_date = get_target_date(days_offset=0)
+        start_date = get_target_date(days_offset=2)
+        print(f"[日期范围] {start_date} ~ {end_date} (3天)")
         print(f"   (北京时间: {datetime.now(timezone.utc) + timedelta(hours=8)} + 8h)")
         print()
 
@@ -84,41 +119,49 @@ def main():
             print(f"   RSS 日期范围: {date_range[0]} ~ {date_range[1]}")
         print()
 
-        # 3. 查找目标日期的内容
-        print(f"[步骤 2/{total_steps}] 查找目标日期的资讯...")
-        content = fetcher.get_content_by_date(target_date, rss_data)
+        # 3. 查找多天的资讯并合并
+        print(f"[步骤 2/{total_steps}] 查找多天的资讯...")
+        contents = []
+        for offset in range(3):  # 0, 1, 2 天前
+            date_str = get_target_date(days_offset=offset)
+            content = fetcher.get_content_by_date(date_str, rss_data)
+            if content:
+                contents.append(content)
+                print(f"   ✓ {date_str}: {content.get('title', '')[:50]}...")
 
-        if not content:
-            print("   目标日期无内容，生成空页面")
+        if not contents:
+            print("   目标日期范围无内容，生成空页面")
             if email_enabled:
                 notifier.send_empty(
-                    target_date,
-                    f"RSS 中未找到 {target_date} 的资讯内容。"
+                    start_date,
+                    f"RSS 中未找到 {start_date} ~ {end_date} 的资讯内容。"
                     f"RSS 可用日期范围: {date_range[0]} ~ {date_range[1]}"
                 )
 
             # 生成空页面
             generator = HTMLGenerator()
             generator.generate_css()
-            generator.generate_empty(target_date)
-            generator.update_index(target_date, {"summary": ["暂无资讯"]})
+            generator.generate_empty(end_date)
+            generator.update_index(end_date, {"summary": ["暂无资讯"]})
 
             print("   完成")
             return
 
-        print(f"   找到资讯: {content.get('title', '')[:60]}...")
+        # 合并多天的内容
+        print(f"\n   合并 {len(contents)} 天的资讯...")
+        merged_content = merge_contents(contents)
         print()
 
         # 4. 调用 Claude 分析
         print(f"[步骤 3/{total_steps}] 调用 Claude 进行智能分析...")
         analyzer = ClaudeAnalyzer()
-        result = analyzer.analyze(content, target_date)
+        result = analyzer.analyze(merged_content, end_date)
 
         # 检查分析状态
         if result.get("status") == "empty":
             print("   分析结果为空")
             if email_enabled:
-                notifier.send_empty(target_date, result.get("reason", "内容分析为空"))
+                notifier.send_empty(end_date, result.get("reason", "内容分析为空"))
             return
 
         print()
@@ -142,7 +185,7 @@ def main():
         # 6. 发送成功通知（可选）
         if email_enabled:
             print(f"[步骤 5/{total_steps}] 发送邮件通知...")
-            notifier.send_success(target_date, total_items)
+            notifier.send_success(end_date, total_items)
             print()
         else:
             print("   (邮件通知未配置，跳过)")
@@ -153,7 +196,8 @@ def main():
         print("║                                                              ║")
         print("║   ✅ 任务完成!                                              ║")
         print("║                                                              ║")
-        print(f"║   日期: {target_date}                                        ║")
+        print(f"║   日期范围: {start_date} ~ {end_date}                          ║")
+        print(f"║   资讯天数: {len(contents)} 天                                         ║")
         print(f"║   资讯数: {total_items} 条                                          ║")
         print(f"║   主题: {result.get('theme', 'blue')}                                                ║")
         print("║                                                              ║")
@@ -171,7 +215,7 @@ def main():
         # 发送错误通知（如果配置了邮件）
         if email_enabled:
             try:
-                target_date = get_target_date(days_offset=2)
+                target_date = get_target_date(days_offset=0)
                 notifier.send_error(target_date, str(e))
             except:
                 pass
